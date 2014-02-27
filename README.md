@@ -1,3 +1,5 @@
+## Peercoin Branch for development of Ominwallet Peercoin support.  Please feel free to make pull requests or donate to the project http://peer4commit.com/projects/17
+
 ## What is Mastercoin?
 
 [from wiki.mastercoin.org]
