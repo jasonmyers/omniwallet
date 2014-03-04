@@ -1,16 +1,14 @@
-
-<br>
-<a href="/wallet/overview"> Wallet Overview </a>
+<ul class="list-unstyled">
 <br>
 <br>
-<a href="/wallet/addresses"> My Addresses </a>
+<li><a class="" href="/wallet/overview"> Wallet Overview </a>
 <br>
 <br>
-<a href="/wallet/send"> Send Money </a>
+<li><a class="" href="/wallet/addresses"> My Addresses </a>
 <br>
+<br ng-show="hasAddressesWithPrivkey">
+<li ng-show="hasAddressesWithPrivkey"><a class="" href="/wallet/trade"> Trade Assets </a></li>
 <br>
-<a href="/wallet/trade"> Trade Assets </a>
-<br>
-<br>
-<a href="/wallet/history"> History </a>
+<li ng-show="hasAddresses"><a class="" href="/wallet/history"> Trade History </a></li>
+</ul>
 

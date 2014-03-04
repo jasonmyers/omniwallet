@@ -13,7 +13,7 @@ angular.module('omniwallet', [
     $routeProvider.when('/wallet/:page?', {
       templateUrl: function(route) {       
         //new views added here
-        var availableViews = ['overview','addresses','send', 'trade', 'history'];
+        var availableViews = ['overview','addresses', 'trade', 'history'];
         
         var viewFound = availableViews.indexOf(route.page);
         if( viewFound == -1 ) 
@@ -60,11 +60,13 @@ angular.module('omniwallet', [
       templateUrl: '/partials/create_wallet.html',
     }).when('/import', {
       templateUrl: '/partials/wallet_import.html',
+    }).when('/stats', {
+       templateUrl: 'stats.html',
+       controller: StatsCtrl
     }).otherwise({ redirectTo: '/' });
 
     $locationProvider.html5Mode(true).hashPrefix('!');
 });
-
 
 //app helpers
 function TransformRequest(data) { 

@@ -16,7 +16,7 @@ angular.module( 'omniwallet' )
         var deferred = $q.defer();
 
         _.defer( function() {
-          var wallet = $injector.get( 'userService' ).data
+          var wallet = $injector.get( 'userService' ).getWallet();
           if( wallet && wallet.addresses.length > 0 )
           {
             var requests = [];
@@ -213,18 +213,16 @@ var AddBtcAddressModal = function ($scope, $modalInstance ) {
 function addressRequest( $http, $q, addr ) {
   var deferred = $q.defer();
 
-  $http.get( '/v1/address/addr/' + addr.address + '.json' ).then( 
-    function( result ) {
-      deferred.resolve( result );
-    },
+
+  $http.post( '/v1/address/addr/', { 'addr': addr.address } )
+    .success( function( result ) {
+      deferred.resolve( { data: result } );
+    } ).error(
     function( error ) {
       deferred.resolve( {
         data: { 
           address: addr.address,
-          balance: 
-           [ { symbol: 'MSC', value: '0.0' },
-             { symbol: 'TMSC', value: '0.0' },
-             { symbol: 'BTC', value: '0.0' } ] 
+          balance: []
            }
       });
     }
