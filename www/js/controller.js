@@ -7,9 +7,14 @@ function SimpleSendController($scope, userService) {
 }
 function HomeCtrl($templateCache) {
   //DEV ONLY
+  console.log('cleared cache')
   $templateCache.removeAll()
 }
-
+function StatsCtrl($scope, $route, $routeParams, $http){
+  $http.get('/v1/system/stats.json', {}).success(function(data) {
+    $scope.stats = data
+  })
+}
 function Ctrl($scope, $route, $routeParams, $location) {
   
   $scope.$route = $route
@@ -78,7 +83,7 @@ function ExplorerController($scope, $http) {
     }
 }
 
-function SidecarController($scope, $http) {
+function SidecarController($scope, $http, userService) {
     $scope.values = {};
     $scope.setView = function(viewName) {
         $scope.view = $scope.sidecarTemplates[viewName]
@@ -89,8 +94,24 @@ function SidecarController($scope, $http) {
     $scope.sidecarTemplates = {
           'explorer':'/partials/explorer_sc.html',
           'about': '/partials/about_sc.html',
-          'trade': '/partials/trade_sc.html',
           'wallet': '/partials/wallet_sc.html'
     };
-
+    $scope.hasAddresses = userService.getAllAddresses().length != 0 ? true : false;
+    $scope.hasAddressesWithPrivkey = getAddressesWithPrivkey()
+  
+    function getAddressesWithPrivkey() {
+      var addresses = []
+      userService.getAllAddresses().map(
+        function(e,i,a) { 
+          if(e.privkey && e.privkey.length == 58) {
+            addresses.push(e.address);
+          }
+        }
+      );
+      if( addresses.length == 0)
+        addresses = false
+      else
+        addresses = true 
+      return addresses
+    }
 }
