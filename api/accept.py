@@ -17,40 +17,48 @@ def accept_form_response(response_dict):
             return (None, 'No field '+field+' in response dict '+str(response_dict))
         if len(response_dict[field]) != 1:
             return (None, 'Multiple values for field '+field)
+
+    if response_dict.has_key( 'pubKey' ) and is_pubkey_valid( response_dict['pubKey'][0]):
+        pubkey = response_dict['pubKey'][0]
+        response_status='OK'
+    else:
+        response_status='invalid pubkey'
+        pubkey=None
+
     buyer=response_dict['buyer'][0].strip()
     if not is_valid_bitcoin_address_or_pubkey(buyer):
         return (None, 'Buyer is neither bitcoin address nor pubkey')
 
     amount=response_dict['amount'][0]
-    if float(amount)<0 or float(amount)>max_currency_value:
+    if float(amount)<0 or float( from_satoshi( amount ))>max_currency_value:
         return (None, 'Invalid amount')
 
     tx_hash=response_dict['tx_hash'][0]
     if not is_valid_hash(tx_hash):
         return (None, 'Invalid tx hash')
 
-    pubkey='unknown'
-    tx_to_sign_dict={'transaction':'','sourceScript':''}
-    l=len(buyer)
-    if l == 66 or l == 130: # probably pubkey
-        if is_pubkey_valid(buyer):
-            pubkey=buyer
-            response_status='OK'
-        else:
-            response_status='invalid pubkey'
-    else:   
-        if not is_valid_bitcoin_address(buyer):
-            response_status='invalid address'
-        else:
-            buyer_pubkey=get_pubkey(buyer)
-            if not is_pubkey_valid(buyer_pubkey):
-                response_status='missing pubkey'
-            else:
-                pubkey=buyer_pubkey
+    if pubkey == None:
+        tx_to_sign_dict={'transaction':'','sourceScript':''}
+        l=len(buyer)
+        if l == 66 or l == 130: # probably pubkey
+            if is_pubkey_valid(buyer):
+                pubkey=buyer
                 response_status='OK'
+            else:
+                response_status='invalid pubkey'
+        else:   
+            if not is_valid_bitcoin_address(buyer):
+                response_status='invalid address'
+            else:
+                buyer_pubkey=get_pubkey(buyer)
+                if not is_pubkey_valid(buyer_pubkey):
+                    response_status='missing pubkey'
+                else:
+                    pubkey=buyer_pubkey
+                    response_status='OK'
 
-    if pubkey != 'unknown':
-        tx_to_sign_dict=prepare_accept_tx_for_signing(buyer, amount, tx_hash)
+    if pubkey != None:
+        tx_to_sign_dict=prepare_accept_tx_for_signing( pubkey, amount, tx_hash )
     else:
         # minor hack to show error on page
         tx_to_sign_dict['sourceScript']=response_status
@@ -73,7 +81,7 @@ def prepare_accept_tx_for_signing(buyer, amount, tx_hash, min_btc_fee=0.0005):
     changeAddress=buyer
 
     # get the amount in satoshi
-    satoshi_amount=to_satoshi(amount)
+    satoshi_amount=int( amount )
 
     # read json of orig tx to get tx details
     sell_offer_tx_dict_list=load_dict_from_file(data_dir_root + '/tx/'+tx_hash+'.json', all_list=True)
@@ -98,8 +106,8 @@ def prepare_accept_tx_for_signing(buyer, amount, tx_hash, min_btc_fee=0.0005):
     #formatted_block_time_limit=sell_offer_tx_dict['formatted_block_time_limit']
 
     # fee is max between min_btc_fee and required_fee
-    required_fee=to_satoshi(formatted_fee_required)
-    satoshi_min_fee=to_satoshi(min_btc_fee)
+    required_fee=int( formatted_fee_required )
+    satoshi_min_fee=int( min_btc_fee )
     fee=max(satoshi_min_fee,required_fee)
 
     required_value=4*dust_limit
@@ -145,7 +153,7 @@ def prepare_accept_tx_for_signing(buyer, amount, tx_hash, min_btc_fee=0.0005):
 
     # create the BIP11 magic
     
-    change_address_compressed_pub=get_compressed_pubkey_format(change_address_pub)
+    change_address_compressed_pub=get_compressed_pubkey_format( change_address_pub )
     obfus_str=get_sha256(buyer)[:62]
     padded_dataHex=dataHex[2:]+''.zfill(len(change_address_compressed_pub)-len(dataHex))[2:]
     dataHex_obfuscated=get_string_xor(padded_dataHex,obfus_str).zfill(62)

@@ -52,16 +52,15 @@ angular.module('omniwallet', [
         return view
        }
     }).when('/', {
-       templateUrl: 'homepage.html',
+       templateUrl: '/homepage.html',
        controller: HomeCtrl
-    }).when('/login', {
-      templateUrl: '/partials/login.html',
-    }).when('/create', {
-      templateUrl: '/partials/create_wallet.html',
+    }).when('/login/:uuid', {
+       template: '<div ng-controller="HiddenLoginController" ng-init="open()"></div>',
+       controller: HiddenLoginController
     }).when('/import', {
       templateUrl: '/partials/wallet_import.html',
     }).when('/stats', {
-       templateUrl: 'stats.html',
+       templateUrl: '/stats.html',
        controller: StatsCtrl
     }).otherwise({ redirectTo: '/' });
 

@@ -1,8 +1,5 @@
 function WalletTradeAssetsController($modal, $scope, $http, $q, userService) {
   //fee tooltip
-  $('#fee-tooltip').tooltip({ 
-    title: 'Broadcast Fee: 0.0001 BTC + Dust Fees: 0.00006*4 = 0.00024 DeX Minimum Fee: 0.00034', 
-    placement: 'left' });
 
   $('#time-blocks').tooltip({ 
     title: 'Time in blocks the buyer has to complete his purchase (1 block approx. 10 minutes)', 
@@ -36,10 +33,11 @@ function WalletTradeAssetsController($modal, $scope, $http, $q, userService) {
 
   // [ Retrieve Balances ]
 
-  $scope.balanceData = ['  -- ']
-  var addrListBal = []
+  $scope.balanceData = [ 0 ];
+  var addrListBal = [];
 
   $scope.setBalance = function() {
+    $scope.balanceData = [ 0 ];
     var coin = $scope.selectedCoin;
     var address = $scope.selectedAddress
     if (address || coin) {
@@ -68,9 +66,9 @@ function WalletTradeAssetsController($modal, $scope, $http, $q, userService) {
      },function(errorData) {
        console.log('Error, no balance data found for ' + e + ' setting defaults...');
        var balances = [ 
-          { symbol: 'MSC', value: '0.0' },
-          { symbol: 'TMSC', value: '0.0' },
-          { symbol: 'BTC', value: '0.0' } ]
+          { symbol: 'MSC', value: '0' },
+          { symbol: 'TMSC', value: '0' },
+          { symbol: 'BTC', value: '0' } ]
        addrListBal[i] = { address: e, balance: balances }
      });
   });
@@ -101,12 +99,13 @@ function WalletTradeAssetsController($modal, $scope, $http, $q, userService) {
 
   // [ Buy Form Helpers ]
 
-  function getUnsignedBuyTransaction(buyerAddress, buyAmount, saleTransactionHash) {
+  function getUnsignedBuyTransaction(buyerAddress, pubKey, buyAmount, saleTransactionHash) {
     var deferred = $q.defer();
 
     var url = '/v1/exchange/accept/'; 
     $http.post( url, { 
       buyer: buyerAddress, 
+      pubKey: pubKey,
       amount: buyAmount, 
       tx_hash: saleTransactionHash
     }).success(function(data) {
@@ -119,70 +118,96 @@ function WalletTradeAssetsController($modal, $scope, $http, $q, userService) {
   }
 
   function prepareBuyTransaction(buyer, amt, hash, privkeyphrase, $modalScope) {
-    $scope.sendTxPromise = getUnsignedBuyTransaction( buyer, amt, hash);
+    var addressData; userService.data.addresses.forEach(function(e,i) { if(e.address == buyer) addressData = e; });
+    var privKey = new Bitcoin.ECKey.decodeEncryptedFormat(addressData.privkey,privkeyphrase.pass);
+    var pubKey = privKey.getPubKeyHex();
+
+    $scope.sendTxPromise = getUnsignedBuyTransaction( buyer, pubKey, amt, hash);
     $scope.sendTxPromise.then(function(successData) {
-      var successData = successData.data
-      var sourceScript = successData.sourceScript;
-      var unsignedTransaction = successData.transaction;
+      if( successData.data.error )
+      {
+        $modalScope.waiting = false
+        $modalScope.sendError = true
+        $modalScope.error = 'Error preparing buy transaction: ' + successData.data.error;
+      }
+      else
+      {
+        var successData = successData.data
+        var sourceScript = successData.sourceScript;
+        var unsignedTransaction = successData.transaction;
 
-      var addressData; userService.data.addresses.forEach(function(e,i) { if(e.address == buyer) addressData = e; });
-      try {
-        var privKey = new Bitcoin.ECKey.decodeEncryptedFormat(addressData.privkey,privkeyphrase.pass)
+        try {
 
-        var bytes = Bitcoin.Util.hexToBytes(unsignedTransaction)
-        var transaction = Bitcoin.Transaction.deserialize(bytes)
-        var script = parseScript(successData.sourceScript)
-        
-        transaction.ins[0].script = script
-        
-        //DEBUG console.log('before',transaction, Bitcoin.Util.bytesToHex(transaction.serialize()))
-        var signedSuccess = transaction.signWithKey(privKey)
+          var bytes = Bitcoin.Util.hexToBytes(unsignedTransaction)
+          var transaction = Bitcoin.Transaction.deserialize(bytes)
+          var script = parseScript(successData.sourceScript)
+          
+          transaction.ins[0].script = script
+          
+          //DEBUG console.log('before',transaction, Bitcoin.Util.bytesToHex(transaction.serialize()))
+          var signedSuccess = transaction.signWithKey(privKey)
 
-        var finalTransaction = Bitcoin.Util.bytesToHex(transaction.serialize())
-        
-        //Showing the user the transaction hash doesn't work right now
-        //var transactionHash = Bitcoin.Util.bytesToHex(transaction.getHash().reverse())
+          var finalTransaction = Bitcoin.Util.bytesToHex(transaction.serialize())
+          
+          //Showing the user the transaction hash doesn't work right now
+          //var transactionHash = Bitcoin.Util.bytesToHex(transaction.getHash().reverse())
 
-        pushSignedTransaction(finalTransaction).then(function(successData) {
-          var successData = successData.data
-          if( successData.pushed.match(/submitted|success/gi) != null ) {
-            $modalScope.waiting = false
-            $modalScope.sendSuccess = true
-            $modalScope.url = 'http://blockchain.info/address/' + buyer + '?sort=0';
-          } else {
+          pushSignedTransaction(finalTransaction).then(function(successData) {
+            var successData = successData.data
+            if( successData.pushed.match(/submitted|success/gi) != null ) {
+              $modalScope.waiting = false
+              $modalScope.sendSuccess = true
+              $modalScope.url = 'http://blockchain.info/address/' + buyer + '?sort=0';
+            } else {
+              $modalScope.waiting = false
+              $modalScope.sendError = true
+              $modalScope.error = successData.pushed  //Unspecified error, show user
+            }
+            console.log('server response: ',successData);
+          },function(errorData) {
             $modalScope.waiting = false
             $modalScope.sendError = true
-            $modalScope.error = successData.pushed  //Unspecified error, show user
-          }
-          console.log('server response: ',successData);
-        },function(errorData) {
-          $modalScope.waiting = false
-          $modalScope.sendError = true
-          $modalScope.error = 'Could not communicate with server, try again'
-          console.log('server error: ',errorData);
-        });
+            if( errorData.message )
+              $modalScope.error = 'Server error: ' + errorData.message;
+            else if( errorData.data )
+                $modalScope.error = 'Server error: ' + errorData.data;
+            else
+              $modalScope.error = 'Unknown Server Error';
+            console.log('server error: ', errorData);
+          });
 
-        //DEBUG console.log(addressData, privKey, bytes, transaction, script, signedSuccess, finalTransaction );
-        function parseScript (script) {
-              var newScript = new Bitcoin.Script();
-              var s = script.split(" ");
-              for (var i = 0; i < s.length; i++) {
-                  if (Bitcoin.Opcode.map.hasOwnProperty(s[i])) {
-                      newScript.writeOp(Bitcoin.Opcode.map[s[i]]);
-                  } else {
-                      newScript.writeBytes(Bitcoin.Util.hexToBytes(s[i]));
-                  }
-              }
-              return newScript;
+          //DEBUG console.log(addressData, privKey, bytes, transaction, script, signedSuccess, finalTransaction );
+          function parseScript (script) {
+                var newScript = new Bitcoin.Script();
+                var s = script.split(" ");
+                for (var i = 0; i < s.length; i++) {
+                    if (Bitcoin.Opcode.map.hasOwnProperty(s[i])) {
+                        newScript.writeOp(Bitcoin.Opcode.map[s[i]]);
+                    } else {
+                        newScript.writeBytes(Bitcoin.Util.hexToBytes(s[i]));
+                    }
+                }
+                return newScript;
+          }
+        } catch(e) {
+          $modalScope.sendError = true
+          if( e.message )
+            $modalScope.error = 'Error sending transaction: ' + e.message;
+          else if( e.data )
+            $modalScope.error = 'Error sending transaction: ' + e.data;
+          else
+            $modalScope.error = 'Unknown error sending transaction';
+          console.log('Error sending transaction',e );          
         }
-      } catch(e) {
-        $modalScope.sendError = true
-        $modalScope.error = 'Private key was incorrect'
-        console.log('wrong private key',e)
       }
     },function(errorData) {
       $modalScope.sendError = true
-      $modalScope.error = 'Could not communicate with server, try again'
+      if( errorData.message )
+        $modalScope.error = 'Server error: ' + errorData.message;
+      else if( errorData.data )
+          $modalScope.error = 'Server error: ' + errorData.data;
+      else
+        $modalScope.error = 'Unknown Server Error';
       console.log('server error: ', errorData);
     });
   }
@@ -190,9 +215,9 @@ function WalletTradeAssetsController($modal, $scope, $http, $q, userService) {
   $scope.validateBuyForm = function() {
     var coin = $scope.selectedCoin;
     var address = $scope.selectedAddress
-    var buyAmount = +$scope.buyAmount
+    var buyAmount = convertToFundamentalUnit( +$scope.buyAmount, coin );
     var saleHash = $scope.buySaleID
-    var dexFees = +$scope.dexFees
+    var dexFees = convertToFundamentalUnit( +$scope.dexFees, 'BTC' );
     var balance = +$scope.balanceData[0]
     var btcbalance = +$scope.balanceData[1]
 
@@ -212,8 +237,8 @@ function WalletTradeAssetsController($modal, $scope, $http, $q, userService) {
     if( ( (coin == 'MSC') || (coin == 'TMSC') ) ) {
        if( buyAmount < 0.00000001 )
         error += 'make sure your send amount is non-zero, '
-       if( dexFees < 0.00034 )
-        error += 'make sure your fee entry is at least 0.00034, '
+       if( dexFees < 10000 )
+        error += 'make sure your fee entry is at least 0.1 mBTC, '
        if( ( dexFees <= btcbalance ) ==  false ) 
         error += 'make sure you have enough Bitcoin to cover your fees, '
     }
@@ -225,8 +250,8 @@ function WalletTradeAssetsController($modal, $scope, $http, $q, userService) {
         template: '\
           <div class="modal-body">\
               <h3 class="text-center"> Confirm send </h3>\
-              <h3>You\'re about to make an offer to buy ' + (+$scope.buyAmount).toFixed(8) + ' ' +  
-              $scope.selectedCoin + ' with ' + $scope.dexFees + ' in fees </h3>\
+              <h3>You\'re about to make an offer to buy ' + formatCurrencyInFundamentalUnit( buyAmount, $scope.selectedCoin ) +   
+              ' with ' + formatCurrencyInFundamentalUnit( dexFees, 'BTC' ) + ' in fees </h3>\
             <p><br>\
             If the above is correct, please input your passphrase below and press Send Funds.\
             If you encounter an error, feel free to click away from the dialog and try again.\
@@ -287,12 +312,13 @@ function WalletTradeAssetsController($modal, $scope, $http, $q, userService) {
 
   // [ Sale Form Helpers ]
 
-  function getUnsignedSaleTransaction(sellerAddress,saleAmount, salePrice, buyersFee, dexFee, saleBlocks, currency) {
+  function getUnsignedSaleTransaction(sellerAddress, pubKey, saleAmount, salePrice, buyersFee, dexFee, saleBlocks, currency) {
     var deferred = $q.defer();
 
     var url = '/v1/exchange/sell/'; 
     $http.post( url, { 
       seller: sellerAddress, 
+      pubKey: pubKey,
       amount: saleAmount, 
       price: salePrice, 
       min_buyer_fee: buyersFee, 
@@ -309,70 +335,96 @@ function WalletTradeAssetsController($modal, $scope, $http, $q, userService) {
   }
 
   function prepareSaleTransaction(seller, amt, price, buyerfee, fee, blocks, currency, privkeyphrase, $modalScope) {
-    $scope.sendTxPromise = getUnsignedSaleTransaction(seller, amt, price, buyerfee, fee, blocks, currency);
+    var addressData; userService.data.addresses.forEach(function(e,i) { if(e.address == seller) addressData = e; });
+    var privKey = new Bitcoin.ECKey.decodeEncryptedFormat(addressData.privkey,privkeyphrase.pass);
+    var pubKey = privKey.getPubKeyHex();
+
+    $scope.sendTxPromise = getUnsignedSaleTransaction(seller, pubkey, amt, price, buyerfee, fee, blocks, currency);
     $scope.sendTxPromise.then(function(successData) {
-      var successData = successData.data
-      var sourceScript = successData.sourceScript;
-      var unsignedTransaction = successData.transaction
+      if( successData.data.error )
+      {
+        $modalScope.waiting = false
+        $modalScope.sendError = true
+        $modalScope.error = 'Error preparing sell transaction: ' + successData.data.error;
+      }
+      else
+      {
+        var successData = successData.data
+        var sourceScript = successData.sourceScript;
+        var unsignedTransaction = successData.transaction
 
-      var addressData; userService.data.addresses.forEach(function(e,i) { if(e.address == seller) addressData = e; });
-      try {
-        var privKey = new Bitcoin.ECKey.decodeEncryptedFormat(addressData.privkey,privkeyphrase.pass)
+        try {
 
-        var bytes = Bitcoin.Util.hexToBytes(unsignedTransaction)
-        var transaction = Bitcoin.Transaction.deserialize(bytes)
-        var script = parseScript(successData.sourceScript)
-        
-        transaction.ins[0].script = script
-        
-        //DEBUG console.log('before',transaction, Bitcoin.Util.bytesToHex(transaction.serialize()))
-        var signedSuccess = transaction.signWithKey(privKey)
+          var bytes = Bitcoin.Util.hexToBytes(unsignedTransaction)
+          var transaction = Bitcoin.Transaction.deserialize(bytes)
+          var script = parseScript(successData.sourceScript)
+          
+          transaction.ins[0].script = script
+          
+          //DEBUG console.log('before',transaction, Bitcoin.Util.bytesToHex(transaction.serialize()))
+          var signedSuccess = transaction.signWithKey(privKey)
 
-        var finalTransaction = Bitcoin.Util.bytesToHex(transaction.serialize())
-        
-        //Showing the user the transaction hash doesn't work right now
-        //var transactionHash = Bitcoin.Util.bytesToHex(transaction.getHash().reverse())
+          var finalTransaction = Bitcoin.Util.bytesToHex(transaction.serialize())
+          
+          //Showing the user the transaction hash doesn't work right now
+          //var transactionHash = Bitcoin.Util.bytesToHex(transaction.getHash().reverse())
 
-        pushSignedTransaction(finalTransaction).then(function(successData) {
-          var successData = successData.data
-          if( successData.pushed.match(/submitted|success/gi) != null ) {
-            $modalScope.waiting = false
-            $modalScope.sendSuccess = true
-            $modalScope.url = 'http://blockchain.info/address/' + seller + '?sort=0';
-          } else {
+          pushSignedTransaction(finalTransaction).then(function(successData) {
+            var successData = successData.data
+            if( successData.pushed.match(/submitted|success/gi) != null ) {
+              $modalScope.waiting = false
+              $modalScope.sendSuccess = true
+              $modalScope.url = 'http://blockchain.info/address/' + seller + '?sort=0';
+            } else {
+              $modalScope.waiting = false
+              $modalScope.sendError = true
+              $modalScope.error = successData.pushed  //Unspecified error, show user
+            }
+            console.log('server response: ',successData);
+          },function(errorData) {
             $modalScope.waiting = false
             $modalScope.sendError = true
-            $modalScope.error = successData.pushed  //Unspecified error, show user
-          }
-          console.log('server response: ',successData);
-        },function(errorData) {
-          $modalScope.waiting = false
-          $modalScope.sendError = true
-          $modalScope.error = 'Could not communicate with server, try again'
-          console.log('server error: ',errorData);
-        });
+            if( errorData.message )
+              $modalScope.error = 'Server error: ' + errorData.message;
+            else if( errorData.data )
+                $modalScope.error = 'Server error: ' + errorData.data;
+            else
+              $modalScope.error = 'Unknown Server Error';
+            console.log('server error: ', errorData);
+          });
 
-        //DEBUG console.log(addressData, privKey, bytes, transaction, script, signedSuccess, finalTransaction );
-        function parseScript (script) {
-              var newScript = new Bitcoin.Script();
-              var s = script.split(" ");
-              for (var i = 0; i < s.length; i++) {
-                  if (Bitcoin.Opcode.map.hasOwnProperty(s[i])) {
-                      newScript.writeOp(Bitcoin.Opcode.map[s[i]]);
-                  } else {
-                      newScript.writeBytes(Bitcoin.Util.hexToBytes(s[i]));
-                  }
-              }
-              return newScript;
+          //DEBUG console.log(addressData, privKey, bytes, transaction, script, signedSuccess, finalTransaction );
+          function parseScript (script) {
+                var newScript = new Bitcoin.Script();
+                var s = script.split(" ");
+                for (var i = 0; i < s.length; i++) {
+                    if (Bitcoin.Opcode.map.hasOwnProperty(s[i])) {
+                        newScript.writeOp(Bitcoin.Opcode.map[s[i]]);
+                    } else {
+                        newScript.writeBytes(Bitcoin.Util.hexToBytes(s[i]));
+                    }
+                }
+                return newScript;
+          }
+        } catch(e) {
+          $modalScope.sendError = true
+          if( e.message )
+            $modalScope.error = 'Error sending transaction: ' + e.message;
+          else if( e.data )
+            $modalScope.error = 'Error sending transaction: ' + e.data;
+          else
+            $modalScope.error = 'Unknown error sending transaction';
+          console.log('Error sending transaction',e );          
         }
-      } catch(e) {
-        $modalScope.sendError = true
-        $modalScope.error = 'Private key was incorrect'
-        console.log('wrong private key',e)
       }
     },function(errorData) {
       $modalScope.sendError = true
-      $modalScope.error = 'Could not communicate with server, try again'
+      if( errorData.message )
+        $modalScope.error = 'Server error: ' + errorData.message;
+      else if( errorData.data )
+          $modalScope.error = 'Server error: ' + errorData.data;
+      else
+        $modalScope.error = 'Unknown Server Error';
       console.log('server error: ', errorData);
     });
   }
@@ -380,11 +432,12 @@ function WalletTradeAssetsController($modal, $scope, $http, $q, userService) {
   $scope.validateSaleForm = function() {
     var coin = $scope.selectedCoin;
     var address = $scope.selectedAddress
-    var saleAmount = +$scope.saleAmount
-    var salePricePerCoin = +$scope.salePricePerCoin
+    var saleAmount = convertToFundamentalUnit( +$scope.saleAmount, coin );
+    // The price in satoshis of (for example) 1 MSC.
+    var salePricePerCoin = +$scope.salePricePerCoin * getConversionFactor( 'BTC' );
     var saleBlocks = +$scope.saleBlocks
-    var buyersFee = +$scope.buyersFee
-    var dexFees = +$scope.dexFees
+    var buyersFee = convertToFundamentalUnit( +$scope.buyersFee, 'BTC' );
+    var dexFees = convertToFundamentalUnit( +$scope.dexFees, 'BTC' );
     var balance = +$scope.balanceData[0]
     var btcbalance = +$scope.balanceData[1]
 
@@ -400,10 +453,10 @@ function WalletTradeAssetsController($modal, $scope, $http, $q, userService) {
     if( ( (coin == 'MSC') || (coin == 'TMSC') ) ) {
        if( saleAmount < 0.00000001 )
         error += 'make sure your send amount is non-zero, '
-       if( buyersFee < 0.0001 )
-        error += 'make sure your buyers fee entry is at least 0.0001, '
-       if( dexFees < 0.00034 )
-        error += 'make sure your DeX fee entry is at least 0.00034, '
+       if( buyersFee < 10000 )
+        error += 'make sure your buyers fee entry is at least 0.1 mBTC, '
+       if( dexFees < 10000 )
+        error += 'make sure your fee entry is at least 0.1 mBTC, '
 
        if( ( saleAmount <= balance ) == false ) 
         error += 'make sure you aren\'t putting more coins up for sale than you own, '
@@ -417,12 +470,15 @@ function WalletTradeAssetsController($modal, $scope, $http, $q, userService) {
       $scope.showErrors = false
       
       // open modal
+      console.log( '****' );
+      console.log( 'saleAmount: ' + saleAmount );
+      console.log( 'salePricePerCoin: ' + salePricePerCoin );
       var modalInstance = $modal.open({
         template: '\
           <div class="modal-body">\
               <h3 class="text-center"> Confirm sale order </h3>\
-              <h3>You\'re about to put ' + (+$scope.saledAmount).toFixed(8) + ' ' +  
-              $scope.selectedCoin + 'on sale, plus charge ' + $scope.buyersFee + ' in fees over ' +
+              <h3>You\'re about to put ' + formatCurrencyInFundamentalUnit( saleAmount, $scope.selectedCoin ) +  
+              ' on sale at a total price of ' + formatCurrencyInFundamentalUnit( saleAmount / getConversionFactor( $scope.selectedCoin ) * salePricePerCoin, 'BTC' ) + ', plus charge ' + formatCurrencyInFundamentalUnit( buyersFee, 'BTC' ) + ' in fees over ' +
               $scope.saleBlocks + ' blocks.</h3>\
             <p><br>\
             If the above is correct, please input your passphrase below and press Send Funds.\
@@ -465,7 +521,7 @@ function WalletTradeAssetsController($modal, $scope, $http, $q, userService) {
               seller: address,
               amt: saleAmount,
               price: salePricePerCoin,
-              buyerfee: dexFees,
+              buyerfee: buyersFee,
               fee: dexFees,
               blocks: saleBlocks, 
               currency: coin } 
@@ -490,85 +546,113 @@ function WalletTradeAssetsController($modal, $scope, $http, $q, userService) {
 
   // [ Send Form Helpers ]
 
-  function getUnsignedSendTransaction(toAddress,fromAddress, amount, currency, fee) {
+  function getUnsignedSendTransaction(toAddress, pubKey, fromAddress, amount, currency, fee) {
     var url = '/v1/transaction/send/'; 
     var promise = $http.post( url, { 
       from_address: fromAddress, 
       to_address: toAddress, 
       amount: amount, 
       currency: currency, 
-      fee: fee 
+      fee: fee,
+      pubKey: pubKey
     } )
 
     return promise;
   }
 
   function prepareSendTransaction(to, from, amt, currency, fee, privkeyphrase, $modalScope) {
-    $scope.sendTxPromise = getUnsignedSendTransaction(to, from, amt, currency, fee);
+    var addressData; userService.getAllAddresses().forEach(function(e,i) { if(e.address == from) addressData = e; });
+    var privKey = new Bitcoin.ECKey.decodeEncryptedFormat(addressData.privkey,privkeyphrase.pass)
+    var pubKey = privKey.getPubKeyHex();
+
+    $scope.sendTxPromise = getUnsignedSendTransaction(to, pubKey, from, amt, currency, fee);
     $scope.sendTxPromise.then(function(successData) {
-      var successData = successData.data
-      var sourceScript = successData.sourceScript;
-      var unsignedTransaction = successData.transaction
 
-      var addressData; userService.getAllAddresses().forEach(function(e,i) { if(e.address == from) addressData = e; });
-      try {
-        var privKey = new Bitcoin.ECKey.decodeEncryptedFormat(addressData.privkey,privkeyphrase.pass)
+      if( successData.data.error )
+      {
+        $modalScope.waiting = false
+        $modalScope.sendError = true
+        $modalScope.error = 'Error preparing send transaction: ' + successData.data.error;
+      }
+      else
+      {
+        var successData = successData.data
+        var sourceScript = successData.sourceScript;
+        var unsignedTransaction = successData.transaction
 
-        var bytes = Bitcoin.Util.hexToBytes(unsignedTransaction)
-        var transaction = Bitcoin.Transaction.deserialize(bytes)
-        var script = parseScript(successData.sourceScript)
-        
-        transaction.ins[0].script = script
-        
-        //DEBUG console.log('before',transaction, Bitcoin.Util.bytesToHex(transaction.serialize()))
-        var signedSuccess = transaction.signWithKey(privKey)
+        try {
+          var bytes = Bitcoin.Util.hexToBytes(unsignedTransaction)
+          var transaction = Bitcoin.Transaction.deserialize(bytes)
+          var script = parseScript(successData.sourceScript)
+          
+          transaction.ins.forEach( function( input ) {
+            input.script = script;
+          } );
 
-        var finalTransaction = Bitcoin.Util.bytesToHex(transaction.serialize())
-        
-        //Showing the user the transaction hash doesn't work right now
-        //var transactionHash = Bitcoin.Util.bytesToHex(transaction.getHash().reverse())
+          //DEBUG console.log('before',transaction, Bitcoin.Util.bytesToHex(transaction.serialize()))
+          var signedSuccess = transaction.signWithKey(privKey)
 
-        pushSignedTransaction(finalTransaction).then(function(successData) {
-          var successData = successData.data
-          if( successData.pushed.match(/submitted|success/gi) != null ) {
-            $modalScope.waiting = false
-            $modalScope.sendSuccess = true
-            $modalScope.url = 'http://blockchain.info/address/' + from + '?sort=0';
-          } else {
+          var finalTransaction = Bitcoin.Util.bytesToHex(transaction.serialize())
+          
+          //Showing the user the transaction hash doesn't work right now
+          //var transactionHash = Bitcoin.Util.bytesToHex(transaction.getHash().reverse())
+
+          pushSignedTransaction(finalTransaction).then(function(successData) {
+            var successData = successData.data
+            if( successData.pushed.match(/submitted|success/gi) != null ) {
+              $modalScope.waiting = false
+              $modalScope.sendSuccess = true
+              $modalScope.url = 'http://blockchain.info/address/' + from + '?sort=0';
+            } else {
+              $modalScope.waiting = false
+              $modalScope.sendError = true
+              $modalScope.error = successData.pushed  //Unspecified error, show user
+            }
+          },function(errorData) {
             $modalScope.waiting = false
             $modalScope.sendError = true
-            $modalScope.error = successData.pushed  //Unspecified error, show user
-          }
-          console.log('server response: ',successData);
-        },function(errorData) {
-          $modalScope.waiting = false
-          $modalScope.sendError = true
-          $modalScope.error = 'Could not communicate with server, try again'
-          console.log('server error: ',errorData);
-        });
+            if( errorData.message )
+              $modalScope.error = 'Server error: ' + errorData.message;
+            else if( errorData.data )
+                $modalScope.error = 'Server error: ' + errorData.data;
+            else
+              $modalScope.error = 'Unknown Server Error';
+            console.error( errorData );
+          });
 
-        //DEBUG console.log(addressData, privKey, bytes, transaction, script, signedSuccess, finalTransaction );
-        function parseScript (script) {
-              var newScript = new Bitcoin.Script();
-              var s = script.split(" ");
-              for (var i = 0; i < s.length; i++) {
-                  if (Bitcoin.Opcode.map.hasOwnProperty(s[i])) {
-                      newScript.writeOp(Bitcoin.Opcode.map[s[i]]);
-                  } else {
-                      newScript.writeBytes(Bitcoin.Util.hexToBytes(s[i]));
-                  }
-              }
-              return newScript;
+          //DEBUG console.log(addressData, privKey, bytes, transaction, script, signedSuccess, finalTransaction );
+          function parseScript (script) {
+                var newScript = new Bitcoin.Script();
+                var s = script.split(" ");
+                for (var i = 0; i < s.length; i++) {
+                    if (Bitcoin.Opcode.map.hasOwnProperty(s[i])) {
+                        newScript.writeOp(Bitcoin.Opcode.map[s[i]]);
+                    } else {
+                        newScript.writeBytes(Bitcoin.Util.hexToBytes(s[i]));
+                    }
+                }
+                return newScript;
+         }
+        } catch(e) {
+          $modalScope.sendError = true
+          if( e.message )
+            $modalScope.error = 'Error sending transaction: ' + e.message;
+          else if( e.data )
+            $modalScope.error = 'Error sending transaction: ' + e.data;
+          else
+            $modalScope.error = 'Unknown error sending transaction';
+          console.error( e );          
         }
-      } catch(e) {
-        $modalScope.sendError = true
-        $modalScope.error = 'Private key was incorrect'
-        console.log('wrong private key',e)
       }
     },function(errorData) {
       $modalScope.sendError = true
-      $modalScope.error = 'Could not communicate with server, try again'
-      console.log('server error: ', errorData);
+      if( errorData.message )
+        $modalScope.error = 'Server error: ' + errorData.message;
+      else if( errorData.data )
+          $modalScope.error = 'Server error: ' + errorData.data;
+      else
+        $modalScope.error = 'Unknown Server Error';
+      console.error( errorData );
     });
   }
 
@@ -576,11 +660,10 @@ function WalletTradeAssetsController($modal, $scope, $http, $q, userService) {
     var coin = $scope.selectedCoin;
     var address = $scope.selectedAddress
     var sendTo = $scope.sendTo
-    var sendAmount = +$scope.sendAmount
-    var dexFees = +$scope.dexFees
+    var sendAmount = convertToFundamentalUnit( +$scope.sendAmount, coin );
+    var dexFees = convertToFundamentalUnit( +$scope.dexFees, 'BTC' );
     var balance = +$scope.balanceData[0]
     var btcbalance = +$scope.balanceData[1]
-
     var required = [coin,address,$scope.sendAmount,sendTo, dexFees,balance, btcbalance, $scope.sendForm.$valid ]
 
     var error = 'Please '
@@ -597,16 +680,16 @@ function WalletTradeAssetsController($modal, $scope, $http, $q, userService) {
        error += 'make sure you are sending to a valid MSC/BTC address, '
     }
     if(coin == 'BTC') {
-       if( sendAmount < 0.0000543 )
-        error += 'make sure your send amount is at least 0.00006 (54.3 uBTC minimum) if sending BTC, '
-       if( dexFees < 0.0001 )
-        error += 'make sure your fee entry is at least 0.0001 to cover miner costs, '
+       if( sendAmount < 5430 )
+        error += 'make sure your send amount is at least 0.0543 mBTC if sending BTC, '
+       if( dexFees < 10000 )
+        error += 'make sure your fee entry is at least 0.1 mBTC to cover miner costs, '
     }
     if( ( (coin == 'MSC') || (coin == 'TMSC') ) ) {
        if( sendAmount < 0.00000001 )
         error += 'make sure your send amount is non-zero, '
-       if( dexFees < 0.00034 )
-        error += 'make sure your fee entry is at least 0.00034, '
+       if( dexFees < 10000 )
+        error += 'make sure your fee entry is at least 0.1 mBTC, '
     }
     if( error.length < 8) {
       $scope.showErrors = false
@@ -616,8 +699,8 @@ function WalletTradeAssetsController($modal, $scope, $http, $q, userService) {
         template: '\
           <div class="modal-body">\
               <h3 class="text-center"> Confirm send </h3>\
-              <h3>You\'re about to send ' + (+$scope.sendAmount).toFixed(8) + ' ' +  
-              $scope.selectedCoin + ' plus ' + $scope.dexFees + ' in fees to ' + $scope.sendTo + '</h3>\
+              <h3>You\'re about to send ' + formatCurrencyInFundamentalUnit( sendAmount, $scope.selectedCoin) + ' ' +  
+              ' plus ' + formatCurrencyInFundamentalUnit( dexFees, 'BTC' ) + ' in fees to ' + $scope.sendTo + '</h3>\
             <p><br>\
             If the above is correct, please input your passphrase below and press Send Funds.\
             If you encounter an error, feel free to click away from the dialog and try again.\
@@ -658,7 +741,7 @@ function WalletTradeAssetsController($modal, $scope, $http, $q, userService) {
               sendFrom: address, 
               amt: sendAmount,
               coin: coin, 
-              fee: 0.00034 } 
+              fee: dexFees } 
           },
           prepareSendTransaction: function() { 
             return prepareSendTransaction; 
