@@ -1,12 +1,14 @@
 
-function WalletController($scope, $q, $http, $modal, userService) {
+
+function WalletController($scope, $q, $http, $modal, $location, userService) {
+  $scope.uuid = userService.getUUID();
+  $scope.loginLink = $location.protocol() + "://" + $location.host() + "/login/"+ $scope.uuid;
   console.log(userService.getAllAddresses());
 
   $scope.addrList = userService.getAllAddresses().map(function(e,i,a) { return e.address; })
   $scope.addrListBal = []
   $scope.maxCurrencies = [];
   $scope.totals = {}
-  $scope.currentView = userService.getAllAddresses().length == 0 ? "welcome.html" : "overview.html";
 
   $scope.addrList.forEach(function(e,index) {
      $scope.totalsPromise = getData(e);
@@ -41,13 +43,6 @@ function WalletController($scope, $q, $http, $modal, userService) {
      });
   });
 
-  $scope.openCreateAddressModal = function() {
-    $modal.open({
-      templateUrl: '/partials/create_address_modal.html',
-      controller: CreateAddressController
-    });
-  }
-
   $scope.backupWallet = function() {
     console.log(userService.data.wallet);
     var blob = {
@@ -70,17 +65,6 @@ function WalletController($scope, $q, $http, $modal, userService) {
     return deferred.promise;
   }
 
-}
-
-function CreateAddressController($scope, $location, $modalInstance, userService) {
-  $scope.createAddress = function(create) {
-    var ecKey = new Bitcoin.ECKey();
-    var address = ecKey.getBitcoinAddress().toString();
-    var encryptedPrivateKey = ecKey.getEncryptedFormat(create.password);
-    userService.addAddress(address, encryptedPrivateKey);
-    $modalInstance.close();
-    $location.path('/wallet/overview');
-  }
 }
 
 function WalletHistoryController($scope, $http, userService) {
@@ -129,15 +113,20 @@ function WalletHistoryController($scope, $http, userService) {
 
 function WalletTradeController($scope, $http, $q, userService) {
 
+  //use global to pass data around
+  $scope.global = {}
+
   $scope.onTradeView = true
   $scope.history = '/partials/wallet_history.html';
 
-  $scope.setView = function(view) {
+  $scope.setView = function(view, data) {
     if( view != 'tradeInfo')
       $scope.onTradeView = false
     else
       $scope.onTradeView = true
     $scope.tradeView = $scope.tradeTemplates[view]
+
+    $scope.global[view] = data;
   }
 
   $scope.tradeTemplates = {
@@ -147,7 +136,69 @@ function WalletTradeController($scope, $http, $q, userService) {
         'saleOffer': '/partials/wallet_sale.html'
   };
 
+  //initialize the data used in the template
+  $scope.currAcronyms = { 'BTC': 'Bitcoin', 'MSC': 'Mastercoin', 'TMSC': 'Test Mastercoin' }
+  $scope.currPairs = [ ['BTC', 'MSC'] , ['BTC' , 'TMSC'] ];
+  
+  //Get the active currency pair
+  $scope.activeCurrencyPair = []
+  
+  $scope.setActiveCurrencyPair = function(currencyPair) {
+    console.log(currencyPair);
+    if(!currencyPair)
+      $scope.activeCurrencyPair = $scope.currPairs[0]
+    else
+      $scope.activeCurrencyPair = currencyPair
+  }
+  $scope.isActiveCurrencyPair = function(currencyPair) {
+    if( angular.equals(currencyPair, $scope.activeCurrencyPair) ) 
+      return { 'active': 1 }
+    else
+      return { 'active': 0 }
+  }
+}
 
+function WalletTradeOverviewController($scope, $http, $q, userService) {
+  //$scope.selectedAddress = userService.getAllAddresses()[ userService.getAllAddresses().length-1 ].address;
+  $scope.currencyUnit = 'stom'
+  $scope.selectedTimeframe = "604800"
+  $scope.getData = function(time) {
+    $scope.orderbook = []
+    var transaction_data = []
+    var postData = { 
+      type: 'TIME',
+      currencyType: 'TMSC',
+      time: time 
+    };
+    $http.post('/v1/exchange/offers', postData).success(
+      function(offerSuccess) {
+        if(offerSuccess.data.length > 0) {
+          transaction_data = offerSuccess.data
+          //DEBUG console.log(transaction_data)
+          //turn everything to number value
+          transaction_data.forEach(function(tx) { 
+            transaction_data_keys = Object.keys(tx); 
+            transaction_data_keys.forEach(function(key) { 
+              if( (typeof tx[key] === 'string') && (tx[key].search(/[a-zA-Z]/g) === -1) ) {
+                 tx[key] = +tx[key]
+              } 
+            });
+          });
+
+          transaction_data.forEach(function(tx) { 
+            transaction_data_keys = ['formatted_amount','formatted_amount_available',
+              'formatted_bitcoin_amount_desired','formatted_fee_required','formatted_price_per_coin'];
+            transaction_data_keys.forEach(function(key) { 
+                  tx[key] = formatCurrencyInFundamentalUnit( tx[key], 'wtos')
+              }); 
+          });
+
+          //DEBUG console.log(transaction_data)
+        } else transaction_data.push({ tx_hash: 'No offers/bids found for this timeframe' })
+      $scope.orderbook = transaction_data;
+      }
+    );
+  }
 }
 
 function WalletTradeHistoryController($scope, $http, $q, userService) {
@@ -171,18 +222,91 @@ function WalletTradeHistoryController($scope, $http, $q, userService) {
     $http.post('/v1/exchange/offers', postData).success(
       function(offerSuccess) {
         if(offerSuccess.data != "ADDRESS_NOT_FOUND") {
-        var type_offer = Object.keys(offerSuccess.data);
+          var dataLength = 0; Object.keys(offerSuccess.data).forEach(function(e,i,a) { dataLength += offerSuccess.data[e].length; })
+          if(dataLength != 0) {
+            var type_offer = Object.keys(offerSuccess.data);
 
-        angular.forEach(type_offer, function(offerType) {
-         //DEBUG console.log(offerType, offerSuccess.data[offerType])
-         angular.forEach(offerSuccess.data[offerType], function(offer) {
-          transaction_data.push(offer)
-         })
-        })
-      } else transaction_data.push({ tx_hash: 'No offers/bids found for this pair/address, why not make one?' })
+            angular.forEach(type_offer, function(offerType) {
+              //DEBUG console.log(offerType, offerSuccess.data[offerType])
+              angular.forEach(offerSuccess.data[offerType], function(offer) {
+                transaction_data.push(offer)
+              });
+            })
+          }  else transaction_data.push({ tx_hash: 'No offers/bids found for this pair/address, why not make one?' })
+        } else transaction_data.push({ tx_hash: 'No offers/bids found for this pair/address, why not make one?' })
       $scope.orderbook = transaction_data;
       }
     );
   }
 
 }
+
+
+function WalletTradePendingController($scope, $http, $q, userService) {
+  //$scope.selectedAddress = userService.getAllAddresses()[ userService.getAllAddresses().length-1 ].address;
+  $scope.currencyUnit = 'stom'
+  $scope.pendingThinking = true
+  $scope.hasAddressesWithPrivkey = getAddressesWithPrivkey()
+  
+  $scope.selectedCoin = 'BTC'
+  $scope.selectedTimeframe="604800"
+  $scope.getData = function(time) {
+    $scope.orderbook = []
+    var transaction_data = []
+    var postData = { 
+      type: 'TIME',
+      currencyType: 'TMSC',
+      orderType: 'ACCEPT',
+      time: time || 2419200
+    };
+    $http.post('/v1/exchange/offers', postData).success(
+      function(offerSuccess) {
+        if(offerSuccess.data.length > 0) {
+          transaction_data = offerSuccess.data
+
+          transaction_data.forEach(function(tx) { 
+            transaction_data_keys = ['formatted_amount','formatted_amount_available',
+              'formatted_bitcoin_amount_desired','formatted_fee_required','formatted_price_per_coin', 'bitcoin_required'];
+            transaction_data_keys.forEach(function(key) { 
+                  tx[key] = formatCurrencyInFundamentalUnit( tx[key], 'wtos')
+              }); 
+          });
+
+          filtered_transaction_data = []
+          $scope.hasAddressesWithPrivkey.forEach(function(addr) { 
+             transaction_data.forEach(function(elem) {
+                if(addr == elem.from_address) {
+                   //DEBUG console.log(addr, elem.from_address)
+                   filtered_transaction_data.push(elem)
+                }
+              });
+          });
+          transaction_data = filtered_transaction_data
+          //DEBUG console.log(filtered_transaction_data)
+        } else transaction_data.push({ tx_hash: 'No offers/bids found for this timeframe' })
+      $scope.orderbook = transaction_data.length != 0 ? transaction_data : [{ tx_hash: 'No offers/bids found for this timeframe' }];
+      }
+    );
+  }
+  $scope.purchaseCoin = function(tx) { 
+    $scope.pendingThinking = false;
+    $scope.buyTransaction = tx
+    $scope.sendTo = tx.to_address
+    $scope.sendAmountPlaceholder = tx.bitcoin_required
+    $scope.selectedAddress = tx.from_address
+  }
+
+
+  function getAddressesWithPrivkey() {
+    var addresses = []
+    userService.getAllAddresses().map(
+      function(e,i,a) { 
+        if(e.privkey && e.privkey.length == 58) {
+          addresses.push(e.address);
+        }
+      }
+    );
+    return addresses
+  }
+}
+

@@ -8,7 +8,13 @@ running on top of bitcoin like HTTP runs on top of TCP/IP. Its purpose is to bui
 core Bitcoin protocol and add new advanced features, with a focus on a straight-forward and 
 easy to understand implementation which allows for analysis and its rapid development. 
 
-## What is this Web-Wallet?
+## What is Omniwallet?
+
+Omniwallet is a new type of web wallet, that combines security, ease of use, multi-currency support, and is completely open source from the ground up (up to the deplomeny scripts!)
+
+It currently supports Bitcoin and Mastercoin, and will support Mastercoin-derived currency in the future. In addition, support for other blockchains is a high priority for us - you will be able to store Litecoins, Peercoins, and other alts on the same highly secure web wallet.
+
+You can checkout the test builds at [test.omniwallet.org](https://test.omniwallet.org/) (please note that this is not production ready, only use small amounts of BTC and MSC!)
 
 ### Best in class security
 
@@ -45,9 +51,8 @@ service = "tcp://162.243.29.201:9091"
 ```
 Make sure you have python libraries installed - note that we use ``apt-get`` to install python-git.  Pip installs an older, stable version, and we need things that start in beta version 0.3.2.
 ```
-sudo apt-get install git python-simplejson python-git python-pip
-sudo pip install ecdsa
-sudo pip install pycoin
+sudo apt-get install git python-simplejson python-git python-pip libffi-dev
+sudo pip install -r requirements.txt
 ```
 Install nginx, and drop in the config included with this codebase.
 ```
@@ -89,6 +94,11 @@ Start nginx by running:
 sudo service nginx start
 ```
 Using the config included, nginx will launch an HTTP server on port 80.
+
+Set an environment variable containing a secret passphrase - this is used to generate salts for indivdual user IDs, and it needs to be both secret AND not change.
+```
+export OMNIWALLET_SECRET="DontTellAnyoneThis"
+```
 Start the blockchain parser and python services by running:
 
 ```
@@ -383,6 +393,7 @@ $.post('/v1/transaction/validateaddr/', dataToSend, function (data) {}).fail( fu
 ```
 var dataToSend = { 
 	from_address: from_address, 
+	pubKey: pubKey,
 	to_address: to_address, 
 	amount: amount, 
 	currency: currency, 
@@ -424,7 +435,7 @@ $.post('/wallet/validateaddr/', dataToSend, function (data) {}).fail( function()
 
 #### Encode the trade offer:
 ```
-var dataToSend = { seller: from_address, amount: amount, price: price, min_buyer_fee: min_buyer_fee, fee: fee, blocks: blocks, currency: currency };
+var dataToSend = { seller: from_address, pubKey: pubKey, amount: amount, price: price, min_buyer_fee: min_buyer_fee, fee: fee, blocks: blocks, currency: currency };
 $.post('/v1/transaction/sell/', dataToSend, function (data) {
 
 	//data should have fields sourceScript and transaction\
@@ -459,7 +470,7 @@ $.post('/v1/transaction/validateaddr/', dataToSend, function (data) {}).fail( fu
 | ``{ "status": "invalid address" }``     | This address just isn't valid. |
 #### Encode the acceptance:
 ```
-var dataToSend = { buyer: buyer, amount: amount, tx_hash: tx_hash };
+var dataToSend = { buyer: buyer, pubKey: pubKey, amount: amount, tx_hash: tx_hash };
 $.post('/v1/transaction/accept/', dataToSend, function (data) {
 
 	//data should have fields sourceScript and transaction

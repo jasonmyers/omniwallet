@@ -5,10 +5,17 @@ function SimpleSendController($scope, userService) {
   MySimpleSendHelpers(wallet);
 
 }
-function HomeCtrl($templateCache) {
-  //DEV ONLY
-  console.log('cleared cache')
-  $templateCache.removeAll()
+function HomeCtrl( $templateCache, $injector, $location ) {
+  if(  $injector.get( 'userService' ).getUUID() )
+  {
+    $location.url( '/wallet/overview' );
+  }
+  else
+  {
+    //DEV ONLY
+    console.log('cleared cache')
+    $templateCache.removeAll()
+  }
 }
 function StatsCtrl($scope, $route, $routeParams, $http){
   $http.get('/v1/system/stats.json', {}).success(function(data) {
@@ -21,11 +28,30 @@ function Ctrl($scope, $route, $routeParams, $location) {
   $scope.$location = $location
      
   $scope.templates = { 
-        'header': 'header.html', 
-        'footer': 'footer.html',
-        'sidecar': '/partials/sidecar.html'
+        'header': '/header.html', 
+        'footer': '/footer.html',
+        'sidecar': '/partials/sidecar.html',
+        'add_address': '/partials/add_address.html',
+        'disclaimer': '/partials/disclaimer.html'
   };
 
+}
+
+
+function HiddenLoginController($scope, $modal, $location) {
+  $scope.open = function () {
+     $scope.uuid = $location.path().replace("/login/", "");
+
+    $modal.open({
+      templateUrl: '/partials/login_modal.html',
+      controller: LoginControllerUUID,
+      resolve: {
+        uuid: function () {
+          return $scope.uuid;
+        }
+      }
+    });
+  }
 }
 
 function NavigationController($scope, $http, $modal, userService) {
@@ -36,21 +62,21 @@ function NavigationController($scope, $http, $modal, userService) {
 
     $scope.openCreateModal = function() {
       $modal.open({
-        templateUrl: 'partials/wallet_create_modal.html',
+        templateUrl: '/partials/wallet_create_modal.html',
         controller: CreateWalletController
       });
     }
 
     $scope.openImportModal = function() {
       $modal.open({
-        templateUrl: 'partials/wallet_import_modal.html',
+        templateUrl: '/partials/wallet_import_modal.html',
         controller: WalletController
       });
     }
 
     $scope.openLoginModal = function() {
       $modal.open({
-        templateUrl: 'partials/login_modal.html',
+        templateUrl: '/partials/login_modal.html',
         controller: LoginController 
       });
     }
@@ -66,8 +92,10 @@ function ExplorerController($scope, $http) {
     // Scope members
     $scope.transactions = {};
     $scope.currencies = ['MSC','TMSC']
-    
-    $scope.getData = function getData(currency) {  
+    $scope.currency = 'MSC'
+
+    $scope.getData = function getData(){ 
+      var currency = $scope.currency; console.log('did', currency)
       $http.get('/v1/transaction/values.json', {}). success(
         function(data) {
           for(var i = 0; i < data.length; i++) {
@@ -97,7 +125,7 @@ function SidecarController($scope, $http, userService) {
           'wallet': '/partials/wallet_sc.html'
     };
     $scope.hasAddresses = userService.getAllAddresses().length != 0 ? true : false;
-    $scope.hasAddressesWithPrivkey = getAddressesWithPrivkey()
+    $scope.hasAddressesWithPrivkey = getAddressesWithPrivkey().length != 0 ? true : false;
   
     function getAddressesWithPrivkey() {
       var addresses = []
@@ -108,10 +136,7 @@ function SidecarController($scope, $http, userService) {
           }
         }
       );
-      if( addresses.length == 0)
-        addresses = false
-      else
-        addresses = true 
       return addresses
     }
+
 }

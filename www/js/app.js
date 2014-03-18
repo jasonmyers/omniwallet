@@ -3,7 +3,8 @@
 angular.module('omniwallet', [
     'ngRoute',
     'ui.bootstrap',
-    'ui.bootstrap.modal'
+    'ui.bootstrap.modal',
+    'vr.filters.passwordStrength'
   ],
   function($routeProvider, $locationProvider, $httpProvider) {
     
@@ -13,7 +14,7 @@ angular.module('omniwallet', [
     $routeProvider.when('/wallet/:page?', {
       templateUrl: function(route) {       
         //new views added here
-        var availableViews = ['overview','addresses', 'trade', 'history'];
+        var availableViews = ['overview','addresses', 'trade', 'history', 'send', 'pending'];
         
         var viewFound = availableViews.indexOf(route.page);
         if( viewFound == -1 ) 
@@ -52,16 +53,15 @@ angular.module('omniwallet', [
         return view
        }
     }).when('/', {
-       templateUrl: 'homepage.html',
+       templateUrl: '/homepage.html',
        controller: HomeCtrl
-    }).when('/login', {
-      templateUrl: '/partials/login.html',
-    }).when('/create', {
-      templateUrl: '/partials/create_wallet.html',
+    }).when('/login/:uuid', {
+       template: '<div ng-controller="HiddenLoginController" ng-init="open()"></div>',
+       controller: HiddenLoginController
     }).when('/import', {
       templateUrl: '/partials/wallet_import.html',
     }).when('/stats', {
-       templateUrl: 'stats.html',
+       templateUrl: '/stats.html',
        controller: StatsCtrl
     }).otherwise({ redirectTo: '/' });
 
