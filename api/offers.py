@@ -63,7 +63,7 @@ def filterOffersByTime( request_data , time_seconds=86400):
 
     transaction_data = []
     for transaction in transactions:
-        if transaction[-5:] == '.json':
+        if transaction.endswith('.json'):
           with open( transaction , 'r' ) as f:
             tx = json.loads(f.readline())[0]
 
