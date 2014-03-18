@@ -1,12 +1,15 @@
 import json
 import threading
+
 class StatsFileBackend:
   """
   This is a implementation of the Stats backend used to store the stats
   in a simple file. You can change this to a sql backend at a later date
   if needed.
   """
-  def __init__(self, options={}):
+  def __init__(self, options=None):
+    if options is None:
+      options = {}
     self.lock = threading.Lock()
     self.db_path = options["db_path"]
     try:
