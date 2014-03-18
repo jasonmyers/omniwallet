@@ -19,7 +19,7 @@ class StatsBackend:
   def increment(self, key):
     val = self.engine.get(key) 
 
-    if val == None:
+    if val is None:
       val = 0
 
     val += 1

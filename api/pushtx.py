@@ -34,13 +34,13 @@ def pushtx(signed_tx):
 
     # validate tx first
     ret=validate_tx(f.name)
-    if ret != None:
+    if ret is not None:
         f.close()
         return ret
     
     # broadcast
     ret=broadcast_tx(f.name)
-    if ret != None:
+    if ret is not None:
         return ret
     else:
         stats = StatsBackend()

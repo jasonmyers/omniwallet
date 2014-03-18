@@ -41,7 +41,7 @@ def accept_form_response(response_dict):
     if float(fee)<0 or float( from_satoshi( fee ))>max_currency_value:
         return (None, 'Invalid fee')
 
-    if pubkey == None:
+    if pubkey is None:
         tx_to_sign_dict={'transaction':'','sourceScript':''}
         l=len(buyer)
         if l == 66 or l == 130: # probably pubkey
@@ -62,7 +62,7 @@ def accept_form_response(response_dict):
                     response_status='OK'
 
     #DEBUG info(['early days', buyer, amount, tx_hash, fee])
-    if pubkey != None:
+    if pubkey is not None:
         tx_to_sign_dict=prepare_accept_tx_for_signing( pubkey, amount, tx_hash, fee )
     else:
         # minor hack to show error on page
