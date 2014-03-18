@@ -13,7 +13,7 @@ from stats_backend import StatsBackend
 def pushtx_response(response_dict):
     expected_fields=['signedTransaction']
     for field in expected_fields:
-        if not response_dict.has_key(field):
+        if field not in response_dict:
             return (None, 'No field '+field+' in response dict '+str(response_dict))
         if len(response_dict[field]) != 1:
             return (None, 'Multiple values for field '+field)

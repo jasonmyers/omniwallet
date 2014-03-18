@@ -11,14 +11,14 @@ def send_form_response(response_dict):
     expected_fields=['from_address', 'to_address', 'amount', 'currency', 'fee']
     # if marker is True, send dust to marker (for payments of sells)
     for field in expected_fields:
-        if not response_dict.has_key(field):
+        if field not in response_dict:
             info('No field '+field+' in response dict '+str(response_dict))
             return (None, 'No field '+field+' in response dict '+str(response_dict))
         if len(response_dict[field]) != 1:
             info('Multiple values for field '+field)
             return (None, 'Multiple values for field '+field)
           
-    if response_dict.has_key( 'pubKey' ) and is_pubkey_valid( response_dict['pubKey'][0]):
+    if 'pubKey' in response_dict and is_pubkey_valid( response_dict['pubKey'][0]):
         pubkey = response_dict['pubKey'][0]
         response_status='OK'
     else:

@@ -11,7 +11,7 @@ data_dir_root = os.environ.get('DATADIR')
 def offers_response(response_dict):
     expected_fields=['type','currencyType']
     for field in expected_fields:
-        if not response_dict.has_key(field):
+        if field not in response_dict:
             return (None, 'No field '+field+' in response dict '+str(response_dict))
         if len(response_dict[field]) != 1:
             return (None, 'Multiple values for field '+field)
@@ -41,7 +41,7 @@ def filterOffersByTime( request_data , time_seconds=86400):
     import time
 
     ct = request_data['currencyType']
-    ot = request_data['orderType'][0] if request_data.has_key('orderType') else 'OFFER'
+    ot = request_data['orderType'][0] if 'orderType' in request_data else 'OFFER'
 
     otLookup = { 'OFFER': 'Sell offer', 'ACCEPT': 'Sell accept' }
     #for each file in /tx
