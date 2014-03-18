@@ -83,8 +83,8 @@ def filterOffers(address,currencytype, offertype):
     try:
         datadir = data_dir_root + '/addr'
         filepath =  datadir + '/' + address + '.json'
-        f=open( filepath , 'r' )
-        allOffers = json.loads(f.readline())
+        with open( filepath , 'r' ) as f:
+            allOffers = json.loads(f.readline())
     except IOError:
         return 'ADDRESS_NOT_FOUND'
     
@@ -130,8 +130,8 @@ def filterTransactionBid(transaction,validitystatus):
     try:
         datadir = data_dir_root + '/bids'
         filepath =  datadir + '/bids-' + transaction + '.json'
-        f=open( filepath , 'r' )
-        transactionData = json.loads(f.readline())
+        with open( filepath , 'r' ) as f:
+            transactionData = json.loads(f.readline())
     except IOError:
         return 'TRANSACTION_NOT_FOUND'
 
@@ -156,8 +156,8 @@ def filterTransaction(transaction):
     try:
         datadir = data_dir_root + '/tx'
         filepath =  datadir + '/' + transaction + '.json'
-        f=open( filepath , 'r' )
-        transactionData = json.loads(f.readline())
+        with open( filepath , 'r' ) as f:
+            transactionData = json.loads(f.readline())
         return transactionData
     except IOError:
         return 'TRANSACTION_NOT_FOUND'

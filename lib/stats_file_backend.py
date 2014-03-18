@@ -10,9 +10,8 @@ class StatsFileBackend:
     self.lock = threading.Lock()
     self.db_path = options["db_path"]
     try:
-      f = open(self.db_path, "r")
-      self.stats = json.loads(f.read())
-      f.close()
+      with open(self.db_path, "r") as f:
+          self.stats = json.loads(f.read())
     except (ValueError, IOError) as e:
       self.stats = {}
       print "Could not read config, creating new one: " , e
@@ -20,9 +19,8 @@ class StatsFileBackend:
     print "Saving stats in", self.db_path
 
   def persist(self):
-    f = open(self.db_path, "w")
-    f.write( json.dumps(self.stats) )
-    f.close()
+    with open(self.db_path, "w") as f:
+        f.write( json.dumps(self.stats) )
 
   def get(self, key):
     try:
